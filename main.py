@@ -44,6 +44,26 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
+# Python 3.11+ defines BaseExceptionGroup in builtins.
+# On Python < 3.11, import from exceptiongroup backport or fallback to dummy class.
+try:
+    BaseExceptionGroup = BaseExceptionGroup
+except NameError:
+    try:
+        from exceptiongroup import BaseExceptionGroup
+    except ImportError:
+        class BaseExceptionGroup(BaseException):
+            pass
+
+# Python 3.11+ defines asyncio.TaskGroup.
+# On Python < 3.11, backport via taskgroup package.
+if not hasattr(asyncio, "TaskGroup"):
+    try:
+        from taskgroup import TaskGroup as _TaskGroup
+        asyncio.TaskGroup = _TaskGroup
+    except ImportError:
+        pass
+
 import sounddevice as sd
 import numpy as np
 from google import genai
