@@ -150,7 +150,7 @@ def _load_system_prompt() -> str:
         return PROMPT_PATH.read_text(encoding="utf-8")
     except Exception:
         return (
-            "You are JARVIS, Tony Stark's AI assistant. "
+            "You are Arush, a personal assistant. "
             "Be concise, direct, and always use the provided tools to complete tasks. "
             "Never simulate or guess results — always call the appropriate tool."
         )
@@ -694,10 +694,10 @@ class JarvisLive:
         # Load customization from config
         try:
             _cfg = json.loads(open(API_CONFIG_PATH, encoding="utf-8").read())
-            self._asst_name = (_cfg.get("assistant_name") or "JARVIS").strip()
+            self._asst_name = (_cfg.get("assistant_name") or "Arush").strip()
             _user_name = (_cfg.get("user_name") or "").strip()
         except Exception:
-            self._asst_name = "JARVIS"
+            self._asst_name = "Arush"
             _user_name = ""
 
         memory     = load_memory()
@@ -723,7 +723,8 @@ class JarvisLive:
                       "speaking in this sentence.")
         identity_ctx = (
             f"[IDENTITY]\n"
-            f"Your name is {self._asst_name}. "
+            f"Your name is {self._asst_name}. You are a personal assistant.\n"
+            f"When asked 'who are you' or 'what are you', respond clearly: 'I am {self._asst_name}, a personal assistant.'\n"
             f"Always refer to yourself as {self._asst_name}.\n"
             f"{_addr}\n\n"
         )
