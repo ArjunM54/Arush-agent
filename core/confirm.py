@@ -143,7 +143,7 @@ def resolve(accepted: bool) -> None:
     def _worker():
         try:
             result = p.run() or "Done."
-            _log(f"SYS: Confirmed — {p.title}. {result}")
+            _log(f"SYS: Completed — {p.title}. {result}")
         except Exception as e:
             _log(f"ERR: {p.title} failed — {e}")
 

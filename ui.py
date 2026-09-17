@@ -4368,6 +4368,13 @@ class MainWindow(QMainWindow):
         # shut the machine down, and a live widget mid-callback is not where you
         # want to be when that happens.
         self._hide_confirm_banner()
+        # Confirmation work intentionally happens off the Qt thread.  Without
+        # this immediate status line the banner simply disappears, which looks
+        # like a dead button while the requested operation is running.
+        self._log.append_log(
+            "SYS: Confirmation accepted — running the requested action."
+            if accepted else "SYS: Action cancelled."
+        )
         try:
             from core.confirm import resolve
             resolve(bool(accepted))
