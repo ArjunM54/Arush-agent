@@ -22,7 +22,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Callable, Generator
+from typing import Any, Callable, Generator, Optional
+
 
 import requests
 
@@ -338,9 +339,44 @@ def call_llm_text(
     Simple text-only generation (no tools).
     Used by planner, executor, error_handler, code_helper, dev_agent.
     """
+_HTTP_SESSION: Optional[requests.Session] = None
+_GEMINI_CLIENT: Optional[Any] = None
+
+
+def _get_http_session() -> requests.Session:
+    global _HTTP_SESSION
+    if _HTTP_SESSION is None:
+        _HTTP_SESSION = requests.Session()
+    return _HTTP_SESSION
+
+
+def _get_gemini_client(api_key: str) -> Any:
+    global _GEMINI_CLIENT
+    if _GEMINI_CLIENT is None:
+        from google import genai
+        _GEMINI_CLIENT = genai.Client(api_key=api_key)
+    return _GEMINI_CLIENT
+
+
+def get_model_tier(is_complex: bool = False) -> str:
+    """Select model tier for requests."""
+    return "gemini-3.6-flash"
+
+
+
+def call_llm_text(
+    prompt:  str,
+    system:  str | None = None,
+    model:   str | None = None,
+    timeout: int = 30,
+    is_complex: bool = False,
+) -> str:
+    """
+    Synchronous text completion call with HTTP connection pooling and warm GenAI client.
+    """
     url, default_model = get_llm_settings()
     endpoint = f"{url}/api/chat"
-    m        = model or default_model
+    m        = model or get_model_tier(is_complex) or default_model
 
     messages: list[dict] = []
     if system:
@@ -349,24 +385,41 @@ def call_llm_text(
 
     payload = {"model": m, "messages": messages, "stream": False, "keep_alive": -1, "options": {"num_predict": 600}}
 
+    session = _get_http_session()
     try:
-        resp = requests.post(endpoint, json=payload, timeout=timeout)
+        resp = session.post(endpoint, json=payload, timeout=timeout)
         resp.raise_for_status()
         return (resp.json().get("message", {}).get("content") or "").strip()
-    except requests.exceptions.ConnectionError:
-        if ensure_ollama_running():
-            try:
-                resp = requests.post(endpoint, json=payload, timeout=timeout)
-                resp.raise_for_status()
-                return (resp.json().get("message", {}).get("content") or "").strip()
-            except Exception:
-                pass
-        raise RuntimeError(
-            f"Cannot connect to Ollama at {url}. "
-            "Make sure Ollama is installed and run: ollama serve"
-        )
     except Exception as e:
+        # Fallback to Gemini API if local LLM server is unreachable
+        try:
+            from memory.config_manager import get_gemini_key
+            key = get_gemini_key()
+            if key and len(key) > 15:
+                client = _get_gemini_client(key)
+                full_prompt = f"{system}\n\n{prompt}" if system else prompt
+                candidates = ("gemini-3.6-flash", "gemini-1.5-flash")
+
+                for m_candidate in candidates:
+                    try:
+                        resp = client.models.generate_content(
+                            model=m_candidate,
+                            contents=full_prompt
+                        )
+                        if resp and resp.text:
+                            return resp.text.strip()
+                    except Exception as model_err:
+                        if "503" in str(model_err) or "UNAVAILABLE" in str(model_err):
+                            time.sleep(0.5)
+                            continue
+                        if "429" in str(model_err) or "RESOURCE_EXHAUSTED" in str(model_err):
+                            # Try next candidate model if quota hit
+                            continue
+                        raise model_err
+        except Exception as gemini_err:
+            print(f"[LLM] Gemini API fallback failed: {gemini_err}")
         raise RuntimeError(f"LLM text call failed: {e}")
+
 
 
 def _stream_openai(

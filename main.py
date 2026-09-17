@@ -99,6 +99,7 @@ from core.action_loader        import discover_actions
 from core.wake_word            import (
     WakeWordDetector, is_ready as wake_is_ready, install_and_download as wake_install,
 )
+from core.agent                import AgentOrchestrator, TaskState, TaskStatus
 
 # How long the assistant stays awake with no user speech before it auto-sleeps
 # again (wake-word mode only).
@@ -393,6 +394,8 @@ class JarvisLive:
         self.ui.on_audio_device_change = self._on_audio_device_change
         self._reconnect_event: asyncio.Event | None = None
         self._reconnect_keep = True   # False → next rebuild drops the resumption handle
+        self.agent_mode = False       # False = Normal Mode (Gemini Live), True = Agent Mode (AgentOrchestrator)
+        self._orchestrator: AgentOrchestrator | None = None
 
         # ── Session resumption ─────────────────────────────────────────
         # The server issues a resumption handle every few seconds and reissues
@@ -628,8 +631,20 @@ class JarvisLive:
         manual = self._dashboard.get_manual_url()
         return url, key, f"{url}/auto-login?key={key}", manual
 
+    def set_agent_mode(self, mode_or_enable):
+        if isinstance(mode_or_enable, str):
+            enabled = (mode_or_enable.lower().strip() == "agent")
+        else:
+            enabled = bool(mode_or_enable)
+
+        if self.agent_mode != enabled:
+            self.agent_mode = enabled
+            mode_str = "AGENT" if enabled else "NORMAL"
+            print(f"[AGENT] MODE CHANGED: {mode_str}")
+            self.ui.write_log(f"SYS: Agent Mode is now {mode_str}")
+
     def _on_text_command(self, text: str):
-        if not self._loop or not self.session:
+        if not self._loop:
             return
         # Respect wake-word sleep: a typed command must not be answered while
         # asleep either (the sleep gate is not just for the mic). Wake first with
@@ -637,13 +652,79 @@ class JarvisLive:
         if self._wake_enabled and not self._awake:
             self.ui.write_log("SYS: I'm asleep — say 'Hey Jarvis' or tap WAKE NOW first.")
             return
-        asyncio.run_coroutine_threadsafe(
-            self.session.send_client_content(
-                turns={"role": "user", "parts": [{"text": text}]},
-                turn_complete=True
-            ),
-            self._loop
-        )
+
+        is_agent = bool(getattr(self, "agent_mode", False))
+        print(f"[AGENT] INPUT: {text}")
+        print(f"[AGENT] MODE: {is_agent}")
+
+        if is_agent:
+            print("[AGENT] ROUTE: AgentOrchestrator")
+            print(f"[AGENT] ORCHESTRATOR: Routing text command to AgentOrchestrator: {text}")
+            self.ui.write_log(f"You (Agent Mode): {text}")
+            threading.Thread(
+                target=self._execute_agent_task,
+                args=(text,),
+                daemon=True
+            ).start()
+        else:
+            print("[AGENT] ROUTE: Gemini Live")
+            if not self.session:
+                return
+            asyncio.run_coroutine_threadsafe(
+                self.session.send_client_content(
+                    turns={"role": "user", "parts": [{"text": text}]},
+                    turn_complete=True
+                ),
+                self._loop
+            )
+
+    def _execute_agent_task(self, text: str):
+        print(f"[AGENT] ORCHESTRATOR: Task started: {text}")
+        self.ui.write_log(f"[AGENT] Task started: {text}")
+
+        if self._orchestrator is None:
+            ctx = {"player": self.ui, "speak": self.speak, "response": None, "session_memory": None}
+            self._orchestrator = AgentOrchestrator(action_registry=self._action_registry, context=ctx)
+        else:
+            self._orchestrator.context.update({"player": self.ui, "speak": self.speak})
+            self._orchestrator.executor.context.update({"player": self.ui, "speak": self.speak})
+
+        # Attach logged verifier to log [AGENT] VERIFYING: step
+        orig_verify = self._orchestrator.verifier.verify_step
+        def logged_verify_step(step, execution_result, task_state=None):
+            desc = step.get("description", "") if isinstance(step, dict) else str(step)
+            print(f"[AGENT] VERIFYING: Verifying step: {desc}")
+            return orig_verify(step, execution_result, task_state)
+        self._orchestrator.verifier.verify_step = logged_verify_step
+
+        def on_update(state: TaskState):
+            if state.status == TaskStatus.PLANNING:
+                print("[AGENT] PLANNER: Generating execution plan")
+            elif state.status == TaskStatus.EXECUTING:
+                if state.current_step:
+                    step_desc = state.current_step.get("description", "")
+                    print(f"[AGENT] EXECUTING: {step_desc}")
+                else:
+                    print("[AGENT] EXECUTING: Executing step")
+
+        try:
+            result = self._orchestrator.run_task(
+                user_request=text,
+                on_update=on_update
+            )
+
+            status_val = result.status
+            if status_val == TaskStatus.COMPLETED.value or status_val == "COMPLETED":
+                print(f"[AGENT] RESULT: Task completed successfully")
+                self.ui.write_log(f"[AGENT] Task completed: {result.summary}")
+            else:
+                print(f"[AGENT] RESULT: Task failed: {result.summary}")
+                self.ui.write_log(f"[AGENT] Task failed: {result.summary}")
+
+        except Exception as e:
+            print(f"[AGENT] RESULT: Task exception: {e}")
+            traceback.print_exc()
+            self.ui.write_log(f"[AGENT] Task failed: {e}")
 
     def set_speaking(self, value: bool):
         with self._speaking_lock:
@@ -1515,23 +1596,12 @@ class JarvisLive:
                 )
                 if not text:
                     continue
-                # Wait up to 8s for session to become ready after a wake
-                for _ in range(80):
-                    if self.session:
-                        break
-                    await asyncio.sleep(0.1)
-                if self.session:
-                    # A remote command is deliberate control and the phone user
-                    # has no desktop WAKE button — so it wakes JARVIS if asleep.
-                    if self._wake_enabled and not self._awake:
-                        self.wake(reason="remote command")
-                    await self.session.send_client_content(
-                        turns={"role": "user", "parts": [{"text": text}]},
-                        turn_complete=True,
-                    )
-                    self.ui.write_log(f"[Web]: {text}")
-                else:
-                    print(f"[Dashboard] Dropped command (no session): {text}")
+                # A remote command is deliberate control and the phone user
+                # has no desktop WAKE button — so it wakes JARVIS if asleep.
+                if self._wake_enabled and not self._awake:
+                    self.wake(reason="remote command")
+                self.ui.write_log(f"[Web]: {text}")
+                self._on_text_command(text)
             except asyncio.TimeoutError:
                 pass
             except Exception as e:
@@ -1543,6 +1613,7 @@ class JarvisLive:
     async def run(self):
         self._loop = asyncio.get_event_loop()
         self._reconnect_event = asyncio.Event()
+        print(f"[AGENT] MODE: {'AGENT' if self.agent_mode else 'NORMAL'}")
 
         # ── Wire the shared core services to the interface ───────────────────
         # The confirmation gate is useless without a way to ask, and a memory
@@ -1569,6 +1640,7 @@ class JarvisLive:
             from dashboard.server import DashboardServer
             self._dashboard = DashboardServer()
             self._dashboard.set_connect_callback(self._on_phone_connected)
+            self._dashboard.set_agent_mode_callback(self.set_agent_mode)
             asyncio.create_task(self._dashboard.serve())
             # Runs for the whole lifetime, not just inside an active session
             asyncio.create_task(self._process_dashboard_commands())

@@ -1,0 +1,14 @@
+{
+  "label": "BASELINE",
+  "action_discovery_ms": 556.18,
+  "llm_response_latency_ms": 0.0,
+  "time_to_first_token_ms": 0.0,
+  "tool_execution_read_ms": 0.249,
+  "tool_execution_write_ms": 1.814,
+  "planning_latency_ms": 589.28,
+  "verification_read_ms": 0.666,
+  "verification_write_ms": 0.761,
+  "total_task_latency_ms": 598.03,
+  "llm_calls_count": 1,
+  "tool_calls_count": 2
+}

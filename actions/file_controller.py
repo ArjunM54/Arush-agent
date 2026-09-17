@@ -92,7 +92,9 @@ def _restore_from_trash(original: Path) -> str:
 
 _SAFE_ROOTS: list[Path] = [
     Path.home(),
+    Path.cwd(),
 ]
+
 
 def _is_safe_path(target: Path) -> bool:
     """Is the given path inside _SAFE_ROOTS? If not, reject the operation."""

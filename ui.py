@@ -4686,3 +4686,8 @@ class JarvisUI:
     def stop_speaking(self):
         if not self.muted:
             self.set_state("LISTENING")
+
+    def update_agent_state(self, task_state_dict: dict):
+        """Thread-safe: emit TaskState update for Agent Mode UI."""
+        if hasattr(self._win, "_agent_state_sig"):
+            self._win._agent_state_sig.emit(task_state_dict)

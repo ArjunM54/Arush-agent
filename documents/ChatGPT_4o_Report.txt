@@ -1,0 +1,11 @@
+Arjun,
+
+As you requested, here is context on your ChatGPT-4o Facts Report.
+Key Fact: ChatGPT-4o is natively multimodal, handling audio, vision, and text in real-time with vastly improved performance.
+
+This technology represents a significant leap forward in human-computer interaction, allowing for more natural and seamless communication across different formats. Its ability to process and generate responses almost instantaneously across audio, visual, and written inputs makes it a powerful tool for various applications from accessibility services to creative collaborative work.
+
+I hope this helps your research!
+
+Best,
+Arush

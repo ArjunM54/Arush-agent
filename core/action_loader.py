@@ -126,17 +126,25 @@ def _validate(module, filename: str) -> ActionRecord:
                         handler=handler, file=filename, valid=True, error="")
 
 
+_DISCOVERY_CACHE: dict[str, ActionRegistry] = {}
+
+
 def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
-                     logger: Callable[[str], None] = print) -> ActionRegistry:
+                     logger: Callable[[str], None] = print,
+                     force_reload: bool = False) -> ActionRegistry:
     """
     Scans actions_dir for *.py files (skips files starting with '_'). A file is
     only treated as an action if it exposes a module-level TOOL dict; files
     without one (shared helpers, capture-only modules) are silently ignored.
-    Import/validation errors and name collisions are logged and the file is
-    skipped — they NEVER raise out of this function.
+    Caches the ActionRegistry in memory to avoid repeated filesystem scans.
     """
+    cache_key = str(actions_dir.resolve())
+    if not force_reload and cache_key in _DISCOVERY_CACHE:
+        return _DISCOVERY_CACHE[cache_key]
+
     reserved = reserved_names or set()
     actions_dir.mkdir(parents=True, exist_ok=True)
+
     valid: dict[str, ActionRecord] = {}
     all_records: list[ActionRecord] = []
 
@@ -189,5 +197,7 @@ def discover_actions(actions_dir: Path, reserved_names: set[str] | None = None,
 
     registry = ActionRegistry(valid, logger)
     registry._all_records = all_records
+    _DISCOVERY_CACHE[cache_key] = registry
     logger(f"Action discovery complete: {len(valid)} active.")
     return registry
+

@@ -74,7 +74,7 @@ def _ddg_news(query: str, max_results: int = 8) -> list[dict]:
                     "source":  r.get("source", ""),
                 })
     except Exception as e:
-        print(f"[WebSearch] ⚠️ DDG news() failed ({e}) — falling back to text search")
+        print(f"[WebSearch] DDG news() failed ({e}) — falling back to text search")
         results = _ddg_search(query, max_results=max_results)
     return results
 
@@ -157,7 +157,7 @@ def _search(query: str) -> str:
     try:
         return _gemini_search(query)
     except Exception as e:
-        print(f"[WebSearch] ⚠️ Gemini failed ({e}) — trying DDG...")
+        print(f"[WebSearch] Gemini failed ({e}) — trying DDG...")
         results = _ddg_search(query)
         return _format_ddg(query, results)
 
@@ -193,7 +193,7 @@ def _news(query: str) -> str:
         try:
             _store(_gemini_search(gemini_query))
         except Exception as e:
-            print(f"[WebSearch] ⚠️ Gemini news failed ({e})")
+            print(f"[WebSearch] Gemini news failed ({e})")
             _store("")
 
     def _try_ddg():
@@ -201,7 +201,7 @@ def _news(query: str) -> str:
             results = _ddg_news(ddg_query, max_results=8)
             _store(_format_news(ddg_query, results))
         except Exception as e:
-            print(f"[WebSearch] ⚠️ DDG news failed ({e})")
+            print(f"[WebSearch] DDG news failed ({e})")
             _store("")
 
     threading.Thread(target=_try_gemini, daemon=True).start()
@@ -223,7 +223,7 @@ def _research(query: str) -> str:
     try:
         return _gemini_search(research_query)
     except Exception as e:
-        print(f"[WebSearch] ⚠️ Research Gemini failed ({e}) — DDG fallback...")
+        print(f"[WebSearch] Research Gemini failed ({e}) — DDG fallback...")
         results = _ddg_search(query, max_results=10)
         return _format_ddg(query, results)
 
@@ -234,7 +234,7 @@ def _price(query: str) -> str:
     try:
         return _gemini_search(price_query)
     except Exception as e:
-        print(f"[WebSearch] ⚠️ Price Gemini failed ({e}) — DDG fallback...")
+        print(f"[WebSearch] Price Gemini failed ({e}) — DDG fallback...")
         results = _ddg_search(f"{query} price buy", max_results=6)
         return _format_ddg(query, results)
 
@@ -247,7 +247,7 @@ def _compare(items: list[str], aspect: str) -> str:
     try:
         return _gemini_search(query)
     except Exception as e:
-        print(f"[WebSearch] ⚠️ Gemini compare failed: {e} — falling back to DDG")
+        print(f"[WebSearch] Gemini compare failed: {e} — falling back to DDG")
 
     all_results: dict[str, list] = {}
     for item in items:
@@ -290,7 +290,10 @@ def web_search(
     if player:
         player.write_log(f"[Search:{mode}] {query or ', '.join(items)}")
 
-    print(f"[WebSearch] 🔍 mode={mode!r}  query={query!r}")
+    try:
+        print(f"[WebSearch] mode={mode!r} query={query!r}")
+    except Exception:
+        pass
 
     try:
         if mode == "compare" and items:
@@ -304,7 +307,7 @@ def web_search(
         return _search(query)
 
     except Exception as e:
-        print(f"[WebSearch] ❌ All backends failed: {e}")
+        print(f"[WebSearch] All backends failed: {e}")
         return f"Search failed: {e}"
 
 

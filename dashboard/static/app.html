@@ -131,18 +131,93 @@
       pointer-events:none; white-space:nowrap;
     }
     #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+    .mode-switch { display: flex; gap: 4px; background: var(--surface); padding: 3px; border-radius: 8px; border: 1px solid var(--border); }
+    .mode-btn { padding: 4px 10px; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; border-radius: 6px; cursor: pointer; color: var(--muted); border: none; background: transparent; transition: all 0.2s; }
+    .mode-btn.active { background: var(--accent); color: #fff; }
+
+    #agent-panel { display: none; flex: 1; flex-direction: column; gap: 12px; padding: 14px 16px; overflow-y: auto; }
+    #agent-panel.show { display: flex; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+    .task-header-title { font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 4px; }
+    .task-goal { font-size: 13px; color: var(--text); opacity: 0.95; line-height: 1.4; }
+
+    .prog-bar-container { height: 8px; background: rgba(255,255,255,0.06); border-radius: 4px; overflow: hidden; margin: 10px 0 6px; }
+    .prog-bar { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #22c55e); transition: width 0.3s ease; }
+
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; }
+    .metric-box { background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+    .metric-lbl { font-size: 9px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); }
+    .metric-val { font-size: 12px; font-weight: 700; color: var(--text); margin-top: 3px; word-break: break-word; }
+
+    .step-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13px; border: 1px solid transparent; margin-bottom: 4px; }
+    .step-item.completed { color: var(--green); background: var(--gdim); border-color: rgba(34,197,94,0.2); }
+    .step-item.executing { color: #fff; background: var(--adim); border-color: var(--accent); }
+    .step-item.pending { color: var(--muted); opacity: 0.7; }
+    .step-item.failed { color: #f87171; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); }
+    .step-icon { font-size: 14px; font-weight: bold; width: 18px; text-align: center; }
+
+    .ctrl-btn-group { display: flex; gap: 8px; margin-top: 12px; }
+    .ctrl-btn { padding: 8px 14px; font-size: 11px; font-weight: 700; border-radius: 8px; border: none; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; transition: opacity 0.15s; }
+    .ctrl-btn:hover { opacity: 0.85; }
+    .btn-pause { background: #f59e0b; color: #000; }
+    .btn-resume { background: #22c55e; color: #000; }
+    .btn-stop { background: #ef4444; color: #fff; }
   </style>
 </head>
 <body>
   <div id="toast"></div>
   <header>
     <div class="logo"><em>J</em>ARVIS</div>
+    <div class="mode-switch">
+      <button class="mode-btn active" id="btn-mode-normal" onclick="setMode('normal')">Normal Mode</button>
+      <button class="mode-btn" id="btn-mode-agent" onclick="setMode('agent')">Agent Mode</button>
+    </div>
     <div class="pill" id="pill"><span class="dot"></span><span id="st">Connecting</span></div>
     <div class="enc-badge" id="enc">AES-256</div>
     <div class="spacer"></div>
     <div class="url">__IP__:__PORT__</div>
   </header>
   <main id="feed"></main>
+
+  <div id="agent-panel">
+    <div class="card">
+      <div class="task-header-title">Active Task</div>
+      <div class="task-goal" id="ag-goal">No active autonomous task running</div>
+      <div class="prog-bar-container">
+        <div class="prog-bar" id="ag-bar"></div>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--muted); font-weight:600;">
+        <span id="ag-status-lbl">Status: Idle</span>
+        <span id="ag-pct-lbl">0%</span>
+      </div>
+
+      <div class="ctrl-btn-group">
+        <button class="ctrl-btn btn-pause" onclick="controlAgent('pause')">Pause</button>
+        <button class="ctrl-btn btn-resume" onclick="controlAgent('resume')">Resume</button>
+        <button class="ctrl-btn btn-stop" onclick="controlAgent('stop')">Stop</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="task-header-title">Task Execution Plan</div>
+      <div id="ag-steps-list">
+        <div class="step-item pending"><span class="step-icon">○</span> Standard conversation mode active</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="task-header-title">Live Execution Metrics</div>
+      <div class="metrics-grid">
+        <div class="metric-box"><div class="metric-lbl">Current Step</div><div class="metric-val" id="ag-curr-step">None</div></div>
+        <div class="metric-box"><div class="metric-lbl">Current Tool</div><div class="metric-val" id="ag-curr-tool">None</div></div>
+        <div class="metric-box"><div class="metric-lbl">Elapsed Time</div><div class="metric-val" id="ag-elapsed">0s</div></div>
+        <div class="metric-box"><div class="metric-lbl">Errors / Retries</div><div class="metric-val" id="ag-errors">0</div></div>
+        <div class="metric-box"><div class="metric-lbl">Completed Files</div><div class="metric-val" id="ag-files">None</div></div>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <input id="inp" placeholder="Send a command to JARVIS…" autocomplete="off">
     <label class="btn-attach" for="file-inp" title="Send file">📎</label>
@@ -220,7 +295,101 @@
       if (m.type === 'wake')          sys('Wake word detected — connecting…');
       if (m.type === 'sys')           sys(m.text);
       if (m.type === 'file_received') _onFileReceived(m);
+      if (m.type === 'agent_state_update') updateAgentState(m.state || m.data);
     };
+
+    function setMode(mode) {
+      const btnNormal = document.getElementById('btn-mode-normal');
+      const btnAgent  = document.getElementById('btn-mode-agent');
+      const feedView  = document.getElementById('feed');
+      const agentView = document.getElementById('agent-panel');
+
+      if (mode === 'agent') {
+        btnNormal.classList.remove('active');
+        btnAgent.classList.add('active');
+        feedView.style.display = 'none';
+        agentView.classList.add('show');
+      } else {
+        btnAgent.classList.remove('active');
+        btnNormal.classList.add('active');
+        agentView.classList.remove('show');
+        feedView.style.display = 'flex';
+      }
+
+      _authFetch('/api/agent/mode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: mode })
+      });
+    }
+
+    async function controlAgent(action) {
+      try {
+        await _authFetch('/api/agent/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: action })
+        });
+        toast(`Agent ${action} sent`);
+      } catch (err) {
+        toast(`Error: ${err.message}`);
+      }
+    }
+
+    function updateAgentState(s) {
+      if (!s) return;
+      document.getElementById('ag-goal').textContent = s.user_request || s.goal || 'Autonomous Task';
+      document.getElementById('ag-status-lbl').textContent = `Status: ${s.status || 'EXECUTING'}`;
+
+      const completedCount = (s.completed_steps || []).length;
+      const totalSteps = (s.plan || []).length || 1;
+      let pct = Math.round((completedCount / totalSteps) * 100);
+      if (s.status === 'COMPLETED') pct = 100;
+      document.getElementById('ag-pct-lbl').textContent = `${pct}%`;
+      document.getElementById('ag-bar').style.width = `${pct}%`;
+
+      // Metrics
+      const currStepObj = s.current_step || {};
+      document.getElementById('ag-curr-step').textContent = currStepObj.description || (s.plan && s.plan.length ? 'In progress' : 'Planning');
+      document.getElementById('ag-curr-tool').textContent = currStepObj.suggested_tool || currStepObj.tool || 'Router / Planner';
+      
+      let elapsed = 0;
+      if (s.created_at) {
+        elapsed = Math.round((new Date() - new Date(s.created_at)) / 1000);
+        if (isNaN(elapsed) || elapsed < 0) elapsed = 0;
+      }
+      document.getElementById('ag-elapsed').textContent = `${elapsed}s`;
+
+      const errCount = (s.errors || []).length + (s.failed_steps || []).length;
+      document.getElementById('ag-errors').textContent = `${errCount}`;
+
+      const files = s.files_created || [];
+      document.getElementById('ag-files').textContent = files.length ? files.join(', ') : 'None';
+
+      // Step List Rendering
+      const listEl = document.getElementById('ag-steps-list');
+      if (s.plan && s.plan.length > 0) {
+        listEl.innerHTML = '';
+        s.plan.forEach((st) => {
+          const div = document.createElement('div');
+          const stStatus = st.status || 'PENDING';
+          if (stStatus === 'COMPLETED') {
+            div.className = 'step-item completed';
+            div.innerHTML = `<span class="step-icon">✓</span> ${esc(st.description || 'Step')}`;
+          } else if (stStatus === 'EXECUTING') {
+            div.className = 'step-item executing';
+            div.innerHTML = `<span class="step-icon">⟳</span> ${esc(st.description || 'Step')}`;
+          } else if (stStatus === 'FAILED') {
+            div.className = 'step-item failed';
+            div.innerHTML = `<span class="step-icon">✗</span> ${esc(st.description || 'Step')}`;
+          } else {
+            div.className = 'step-item pending';
+            div.innerHTML = `<span class="step-icon">○</span> ${esc(st.description || 'Step')}`;
+          }
+          listEl.appendChild(div);
+        });
+      }
+    }
 
     function setStatus(s) {
       if (s === 'active') {

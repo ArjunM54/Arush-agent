@@ -432,6 +432,12 @@ class DashboardServer:
     def set_connect_callback(self, fn) -> None:
         self._connect_callback = fn
 
+    def set_agent_control_callback(self, fn) -> None:
+        self._agent_control_callback = fn
+
+    def set_agent_mode_callback(self, fn) -> None:
+        self._agent_mode_callback = fn
+
     # ── broadcast ────────────────────────────────────────────────────────
 
     async def broadcast(self, msg: dict) -> None:
@@ -445,6 +451,23 @@ class DashboardServer:
             except Exception:
                 dead.add(ws)
         self._clients -= dead
+
+    def broadcast_agent_state(self, task_state_dict: dict) -> None:
+        """Broadcast live TaskState dictionary to all dashboard WebSocket clients."""
+        msg = {
+            "type": "agent_state_update",
+            "state": task_state_dict
+        }
+        self._history.append(msg)
+        if len(self._history) > 300:
+            self._history = self._history[-300:]
+
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self.broadcast(msg))
+        except Exception:
+            pass
 
     # ── FastAPI app ───────────────────────────────────────────────────────
 
@@ -603,6 +626,28 @@ class DashboardServer:
             if self._wake_callback:
                 self._wake_callback()
             return JSONResponse({"ok": True})
+
+        @app.post("/api/agent/control")
+        async def agent_control_ep(req: Request):
+            if not _auth(req):
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            body = await req.json()
+            action = (body.get("action") or "").lower().strip()
+            if hasattr(self, "_agent_control_callback") and self._agent_control_callback:
+                self._agent_control_callback(action)
+            await self.broadcast({"type": "sys", "text": f"Agent action requested: {action.upper()}"})
+            return JSONResponse({"ok": True, "action": action})
+
+        @app.post("/api/agent/mode")
+        async def agent_mode_ep(req: Request):
+            if not _auth(req):
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            body = await req.json()
+            mode = (body.get("mode") or "").lower().strip()
+            if hasattr(self, "_agent_mode_callback") and self._agent_mode_callback:
+                self._agent_mode_callback(mode)
+            await self.broadcast({"type": "mode_change", "mode": mode})
+            return JSONResponse({"ok": True, "mode": mode})
 
         # ── Phone mic real-time audio → Gemini Live ──────────────────────────
 
